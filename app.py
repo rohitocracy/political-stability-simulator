@@ -26,14 +26,13 @@ total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=600
 q = (total_seats // 2) + 1
 tau = st.sidebar.slider("Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
 
-# Enforce minimum of 3 parties
 num_parties = st.sidebar.number_input("Parties", min_value=3, max_value=10, value=3, step=1)
 
 default_names = ["Party A", "Party B", "Party C", "Party D", "Party E", "Party F", "Party G", "Party H", "Party I", "Party J"]
 default_weights = [40, 40, 20, 0, 0, 0, 0, 0, 0, 0]
 default_locs = [20.0, 80.0, 50.0, 10.0, 90.0, 30.0, 70.0, 40.0, 60.0, 50.0]
 
-# Live seat validation and constraint management
+# Safe collection loop
 names, weights, locs = [], [], []
 remaining_seats = total_seats
 
@@ -41,26 +40,23 @@ for i in range(num_parties):
     c1, c2 = st.sidebar.columns([2, 1])
     with c1:
         name = st.text_input(f"P{i+1} Name", value=default_names[i], key=f"name_{i}")
-        # Restrict max allowable seats for this input so it cannot exceed remaining unallocated pool
-        max_allowed = max(0, remaining_seats if i == num_parties - 1 else remaining_seats)
-        default_w = min(default_weights[i] if i < len(default_weights) else 0, max_allowed)
-        
+        default_w = default_weights[i] if i < len(default_weights) else 0
         w = st.number_input(f"P{i+1} Seats", min_value=0, max_value=total_seats, value=default_w, key=f"w_{i}")
     with c2:
-        l = st.slider(f"P{i+1} Loc", min_value=0.0, max_value=100.0, value=default_locs[i], key=f"l_{i}")
+        default_l = default_locs[i] if i < len(default_locs) else 50.0
+        l = st.slider(f"P{i+1} Loc", min_value=0.0, max_value=100.0, value=default_l, key=f"l_{i}")
     
     names.append(name)
     weights.append(w)
-    remaining_seats -= w
+    locs.append(l)
 
-# Auto-correction / Enforcement if total does not add up
+# Auto-balance seats to match total cleanly
 assigned_seats = sum(weights)
 if assigned_seats != total_seats:
     diff = total_seats - assigned_seats
-    # Automatically adjust the last active party's seats to match the total cleanly
     weights[-1] = max(0, weights[-1] + diff)
     assigned_seats = sum(weights)
-    st.sidebar.info(f"ℹ️ Seats automatically balanced: Party '{names[-1]}' adjusted to match Total Seats ({total_seats}).")
+    st.sidebar.info(f"ℹ️ Seats balanced: '{names[-1]}' adjusted to match Total Seats ({total_seats}).")
 
 # --- BACKEND GAME LOGIC ($v_\tau$) ---
 def get_cost(coalition_indices):
