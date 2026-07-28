@@ -23,16 +23,17 @@ st.markdown("Exploring the **Political Impossibility Theorem** & **Stability-Dic
 
 # --- SIDEBAR CONFIGURATION ---
 st.sidebar.header("Parliament Config")
-total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=300, value=100, step=1)
+total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=500, value=100, step=1)
 q = (total_seats // 2) + 1
 tau = st.sidebar.slider("Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
 
-num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=6, value=3, step=1)
+num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=10, value=3, step=1)
 
-default_names = ["Party A", "Party B", "Party Green", "Party D"]
-default_weights = [40, 40, 20, 0]
-default_locs = [20.0, 80.0, 50.0, 10.0]
-default_colors = ["#ff3333", "#ff9933", "#33cc33", "#3366ff"]
+# Safe expanded lists for defaults
+default_names = ["Party A", "Party B", "Party C", "Party D", "Party E", "Party F", "Party G", "Party H", "Party I", "Party J"]
+default_weights = [40, 40, 20, 0, 0, 0, 0, 0, 0, 0]
+default_locs = [20.0, 80.0, 50.0, 10.0, 90.0, 30.0, 70.0, 40.0, 60.0, 50.0]
+default_colors = ["#ff3333", "#3366ff", "#33cc33", "#ff9933", "#9933ff", "#ffff33", "#ff66cc", "#999999", "#666666", "#00ffff"]
 
 names, weights, locs, colors = [], [], [], []
 for i in range(num_parties):
@@ -52,13 +53,12 @@ for i in range(num_parties):
 
 assigned_seats = sum(weights)
 
-# --- CORRECTED PROPER HEMICYCLE (ORDERED LEFT-TO-RIGHT ACROSS ARCS) ---
+# --- CORRECTED HEMICYCLE GENERATOR ---
 def generate_hemicycle_data(party_names, party_weights, party_colors):
     total = sum(party_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
-    # 1. Build standard concentric arc rows (inner to outer)
     num_rows = max(3, int(np.ceil(np.sqrt(total / 2))))
     radii = [3.0 + i * 1.1 for i in range(num_rows)]
     
@@ -69,7 +69,6 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
     if num_rows > 0:
         row_capacities[-1] += diff
 
-    # 2. Generate all coordinate slots ordered row-by-row, and within each row from Left (pi) to Right (0)
     slot_coords = []
     for r_idx, cap in enumerate(row_capacities):
         if cap <= 0:
@@ -79,7 +78,6 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
         for angle in angles:
             slot_coords.append((r * np.cos(angle), r * np.sin(angle)))
 
-    # 3. Flatten party seats into a continuous left-to-right sequence
     seat_party = []
     seat_color = []
     for name, w, col in zip(party_names, party_weights, party_colors):
@@ -87,7 +85,6 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
             seat_party.append(name)
             seat_color.append(col)
             
-    # 4. Map each sequential seat to its structured coordinate slot
     points = []
     for idx, (x, y) in enumerate(slot_coords):
         if idx < len(seat_party):
