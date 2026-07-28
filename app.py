@@ -29,32 +29,25 @@ if scenario == "1. The Impossibility Theorem (3-Player Symmetric)":
     default_names = ["Party A", "Party B", "Party C"]
     default_weights = [1, 1, 1]
     default_locs = [0.0, 0.0, 0.0]
-    default_q = 2
     default_tau = 1.0
 elif scenario == "2. The Cordon Sanitaire (Extremist Penalty)":
     default_names = ["Centrist A", "Centrist B", "Extremist C"]
     default_weights = [30, 30, 40]
     default_locs = [0.0, 15.0, 100.0]
-    default_q = 51
     default_tau = 20.0
 elif scenario == "3. Centrist Veto Block":
     default_names = ["Party A", "Party B", "Party C"]
     default_weights = [40, 30, 30]
     default_locs = [0.0, 50.0, 100.0]
-    default_q = 51
     default_tau = 10.0
 else:
     default_names = ["Party A", "Party B", "Party C"]
     default_weights = [30, 30, 20]
     default_locs = [10.0, 30.0, 90.0]
-    default_q = 51
     default_tau = 25.0
 
-# Parliament Parameters
+# Parliament Parameters - Dynamic Quota Calculation
 n_parties = len(default_names)
-st.sidebar.subheader("Parliament Rules")
-q = st.sidebar.slider("Majority Quota ($q$)", min_value=1, max_value=100, value=default_q)
-tau = st.sidebar.slider("Ideological Tolerance ($\tau$)", min_value=1.0, max_value=100.0, value=default_tau)
 
 st.sidebar.subheader("Party Details")
 names, weights, locs = [], [], []
@@ -70,9 +63,15 @@ for i in range(n_parties):
     weights.append(w)
     locs.append(l)
 
-# --- BACKEND MATHEMATICAL LOGIC ($v_\tau$ game) ---
 total_seats = sum(weights)
+# Automatically calculate strict majority quota (> 50%)
+q = (total_seats // 2) + 1
 
+st.sidebar.subheader("Parliament Rules")
+st.sidebar.metric("Calculated Majority Quota ($q$)", f"{q} (Strict Majority of {total_seats})")
+tau = st.sidebar.slider("Ideological Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=default_tau)
+
+# --- BACKEND MATHEMATICAL LOGIC ($v_\tau$ game) ---
 def get_cost(coalition_indices):
     if not coalition_indices:
         return 0.0
@@ -110,7 +109,6 @@ with col_left:
         "Location": locs
     })
     
-    # Plotly Visualisation of Parliament
     fig = px.scatter(
         df_parties, x="Location", y=[1]*n_parties, size="Seats", color="Party",
         text="Party", range_x=[-10, 110], height=250,
@@ -150,7 +148,7 @@ st.subheader("🤝 Test a Proposed Government Coalition")
 selected_parties = st.multiselect("Select parties to form a government:", options=names, default=names[:min(2, n_parties)])
 
 if selected_parties:
-    sel_indices = [names.index(p) for p in selected_parties]
+    sel_indices = [names.index(p) for p in selected_playlists if p in names] if 'selected_playlists' in locals() else [names.index(p) for p in selected_parties]
     w_sum = get_weight(sel_indices)
     cost = get_cost(sel_indices)
     viable = is_viable(sel_indices)
