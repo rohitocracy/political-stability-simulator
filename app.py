@@ -27,13 +27,12 @@ total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=500
 q = (total_seats // 2) + 1
 tau = st.sidebar.slider("Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
 
-num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=10, value=3, step=1)
+num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=10, value=2, step=1)
 
-# Safe expanded lists for defaults
-default_names = ["Party A", "Party B", "Party C", "Party D", "Party E", "Party F", "Party G", "Party H", "Party I", "Party J"]
-default_weights = [40, 40, 20, 0, 0, 0, 0, 0, 0, 0]
-default_locs = [20.0, 80.0, 50.0, 10.0, 90.0, 30.0, 70.0, 40.0, 60.0, 50.0]
-default_colors = ["#ff3333", "#3366ff", "#33cc33", "#ff9933", "#9933ff", "#ffff33", "#ff66cc", "#999999", "#666666", "#00ffff"]
+default_names = ["Left Party", "Right Party", "Center Party", "Party D", "Party E", "Party F"]
+default_weights = [52, 48, 0, 0, 0, 0]
+default_locs = [10.0, 90.0, 50.0, 30.0, 70.0, 50.0]
+default_colors = ["#3366ff", "#ff3333", "#33cc33", "#ff9933", "#9933ff", "#ffff33"]
 
 names, weights, locs, colors = [], [], [], []
 for i in range(num_parties):
@@ -53,14 +52,21 @@ for i in range(num_parties):
 
 assigned_seats = sum(weights)
 
-# --- CORRECTED HEMICYCLE GENERATOR ---
-def generate_hemicycle_data(party_names, party_weights, party_colors):
+# --- WIKIPEDIA-STYLE HEMICYCLE LAYOUT ENGINE ---
+def generate_wikipedia_hemicycle(party_names, party_weights, party_colors, party_locs):
     total = sum(party_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
+    # 1. Sort parties strictly from ideological Left to Right based on their location value
+    sorted_indices = np.argsort(party_locs)
+    s_names = [party_names[i] for i in sorted_indices]
+    s_weights = [party_weights[i] for i in sorted_indices]
+    s_colors = [party_colors[i] for i in sorted_indices]
+    
+    # 2. Compute concentric row capacities proportional to arc lengths
     num_rows = max(3, int(np.ceil(np.sqrt(total / 2))))
-    radii = [3.0 + i * 1.1 for i in range(num_rows)]
+    radii = [3.5 + i * 1.2 for i in range(num_rows)]
     
     arc_lengths = [r * np.pi for r in radii]
     total_arc = sum(arc_lengths)
@@ -69,6 +75,7 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
     if num_rows > 0:
         row_capacities[-1] += diff
 
+    # 3. Generate structured coordinate slots row-by-row (inner to outer), sweeping from Left (pi) to Right (0)
     slot_coords = []
     for r_idx, cap in enumerate(row_capacities):
         if cap <= 0:
@@ -76,17 +83,22 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
         r = radii[r_idx]
         angles = np.linspace(np.pi, 0, cap)
         for angle in angles:
-            slot_coords.append((r * np.cos(angle), r * np.sin(angle)))
+            slot_coords.append((r * np.cos(angle), r * np.sin(angle), r_idx, angle))
+            
+    # Sort slots to fill inner-most arcs first, and left-to-right within arcs
+    slot_coords.sort(key=lambda s: (s[2], -s[3]))
 
+    # 4. Flatten seats sequentially matching the left-to-right ideological party order
     seat_party = []
     seat_color = []
-    for name, w, col in zip(party_names, party_weights, party_colors):
+    for name, w, col in zip(s_names, s_weights, s_colors):
         for _ in range(w):
             seat_party.append(name)
             seat_color.append(col)
             
+    # 5. Map seats to coordinates
     points = []
-    for idx, (x, y) in enumerate(slot_coords):
+    for idx, (x, y, _, _) in enumerate(slot_coords):
         if idx < len(seat_party):
             points.append({
                 "x": x, "y": y,
@@ -123,7 +135,7 @@ col_left, col_right = st.columns([1.3, 1])
 
 with col_left:
     st.subheader("🏛️ Parliament Chamber")
-    df_seats = generate_hemicycle_data(names, weights, colors)
+    df_seats = generate_wikipedia_hemicycle(names, weights, colors, locs)
     
     if not df_seats.empty:
         color_map = dict(zip(names, colors))
