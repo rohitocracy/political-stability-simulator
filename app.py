@@ -27,12 +27,12 @@ total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=300
 q = (total_seats // 2) + 1
 tau = st.sidebar.slider("Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
 
-num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=6, value=2, step=1)
+num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=6, value=3, step=1)
 
-default_names = ["Party Blue", "Party Red", "Party Green", "Party Orange"]
-default_weights = [52, 48, 0, 0]
+default_names = ["Party A", "Party B", "Party Green", "Party D"]
+default_weights = [40, 40, 20, 0]
 default_locs = [20.0, 80.0, 50.0, 10.0]
-default_colors = ["#3366ff", "#ff3333", "#33cc33", "#ff9933"]
+default_colors = ["#ff3333", "#ff9933", "#33cc33", "#3366ff"]
 
 names, weights, locs, colors = [], [], [], []
 for i in range(num_parties):
@@ -52,17 +52,16 @@ for i in range(num_parties):
 
 assigned_seats = sum(weights)
 
-# --- CORRECTED TRUE LEFT-TO-RIGHT HEMICYCLE LAYOUT ---
+# --- CORRECTED PROPER HEMICYCLE (ORDERED LEFT-TO-RIGHT ACROSS ARCS) ---
 def generate_hemicycle_data(party_names, party_weights, party_colors):
     total = sum(party_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
-    # 1. Define concentric rows (inner to outer)
+    # 1. Build standard concentric arc rows (inner to outer)
     num_rows = max(3, int(np.ceil(np.sqrt(total / 2))))
-    radii = [3.5 + i * 1.2 for i in range(num_rows)]
+    radii = [3.0 + i * 1.1 for i in range(num_rows)]
     
-    # 2. Compute exact capacities for each arc row
     arc_lengths = [r * np.pi for r in radii]
     total_arc = sum(arc_lengths)
     row_capacities = [int(total * (al / total_arc)) for al in arc_lengths]
@@ -70,20 +69,17 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
     if num_rows > 0:
         row_capacities[-1] += diff
 
-    # 3. Generate structured coordinate slots across all rows from left (pi) to right (0)
-    all_slots = []
+    # 2. Generate all coordinate slots ordered row-by-row, and within each row from Left (pi) to Right (0)
+    slot_coords = []
     for r_idx, cap in enumerate(row_capacities):
         if cap <= 0:
             continue
         r = radii[r_idx]
         angles = np.linspace(np.pi, 0, cap)
         for angle in angles:
-            all_slots.append((r, angle, r_idx)) # keep track of row index to sort nicely
-            
-    # Sort slots systematically by row radius, then angle (left to right) to form clean bands
-    all_slots.sort(key=lambda s: (s[2], -s[1]))
+            slot_coords.append((r * np.cos(angle), r * np.sin(angle)))
 
-    # 4. Flatten party seats sequentially
+    # 3. Flatten party seats into a continuous left-to-right sequence
     seat_party = []
     seat_color = []
     for name, w, col in zip(party_names, party_weights, party_colors):
@@ -91,11 +87,10 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
             seat_party.append(name)
             seat_color.append(col)
             
+    # 4. Map each sequential seat to its structured coordinate slot
     points = []
-    for idx, (r, angle, _) in enumerate(all_slots):
+    for idx, (x, y) in enumerate(slot_coords):
         if idx < len(seat_party):
-            x = r * np.cos(angle)
-            y = r * np.sin(angle)
             points.append({
                 "x": x, "y": y,
                 "Party": seat_party[idx],
@@ -139,14 +134,14 @@ with col_left:
             df_seats, x="x", y="y", color="Party",
             color_discrete_map=color_map, height=260
         )
-        fig.update_traces(marker=dict(size=11, line=dict(width=0.2, color='white')))
+        fig.update_traces(marker=dict(size=10, line=dict(width=0.1, color='white')))
         fig.update_layout(
             xaxis=dict(visible=False, showgrid=False, zeroline=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
             margin=dict(t=0, b=0, l=0, r=0),
             legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5, font=dict(size=9))
         )
-        fig.add_annotation(x=0, y=0.15, text=str(assigned_seats), showarrow=False, font=dict(size=22, family="Arial, bold", color="white"))
+        fig.add_annotation(x=0, y=0.1, text=str(assigned_seats), showarrow=False, font=dict(size=22, family="Arial, bold", color="white"))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_right:
