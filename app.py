@@ -6,14 +6,14 @@ from itertools import combinations
 
 st.set_page_config(page_title="Political Stability Simulator", layout="wide")
 
-# --- ULTRA-COMPACT CSS TO ELIMINATE SCROLLING ---
+# --- COMPACT STYLING ---
 st.markdown("""
     <style>
         .block-container { padding-top: 0.8rem; padding-bottom: 0rem; padding-left: 1rem; padding-right: 1rem; }
-        h1 { font-size: 1.5rem !important; margin-bottom: -10px !important; }
-        h3 { font-size: 1.1rem !important; margin-top: 0px !important; margin-bottom: 0px !important; }
-        p { margin-bottom: 0.2rem !important; font-size: 0.9rem !important; }
-        div.stMetric { background-color: #1e1e1e; padding: 5px; border-radius: 5px; }
+        h1 { font-size: 1.4rem !important; margin-bottom: -10px !important; }
+        h3 { font-size: 1.0rem !important; margin-top: 0px !important; margin-bottom: 0px !important; }
+        p { margin-bottom: 0.2rem !important; font-size: 0.85rem !important; }
+        div.stMetric { background-color: #1e1e1e; padding: 4px; border-radius: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -52,34 +52,38 @@ for i in range(num_parties):
 
 assigned_seats = sum(weights)
 
-# --- TRUE PARLIAMENTARY HEMICYCLE (ROW-BY-ROW BLOCK FILLING) ---
+# --- CORRECTED TRUE LEFT-TO-RIGHT HEMICYCLE LAYOUT ---
 def generate_hemicycle_data(party_names, party_weights, party_colors):
     total = sum(party_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
-    # Define concentric arcs (rows from inner/bottom to outer/top)
+    # 1. Define concentric rows (inner to outer)
     num_rows = max(3, int(np.ceil(np.sqrt(total / 2))))
-    radii = [3.5 + i * 1.3 for i in range(num_rows)]
+    radii = [3.5 + i * 1.2 for i in range(num_rows)]
     
-    # Calculate capacities of each row based on circumference proportions
+    # 2. Compute exact capacities for each arc row
     arc_lengths = [r * np.pi for r in radii]
     total_arc = sum(arc_lengths)
     row_capacities = [int(total * (al / total_arc)) for al in arc_lengths]
     diff = total - sum(row_capacities)
     if num_rows > 0:
-        row_capacities[-1] += diff # dump remainder into outermost row
+        row_capacities[-1] += diff
 
-    # Generate angle slots for each row from left (pi) to right (0)
-    row_slots = []
+    # 3. Generate structured coordinate slots across all rows from left (pi) to right (0)
+    all_slots = []
     for r_idx, cap in enumerate(row_capacities):
         if cap <= 0:
             continue
+        r = radii[r_idx]
         angles = np.linspace(np.pi, 0, cap)
         for angle in angles:
-            row_slots.append((radii[r_idx], angle))
+            all_slots.append((r, angle, r_idx)) # keep track of row index to sort nicely
             
-    # Build continuous party blocks (fills inner rows first, blocking colors together)
+    # Sort slots systematically by row radius, then angle (left to right) to form clean bands
+    all_slots.sort(key=lambda s: (s[2], -s[1]))
+
+    # 4. Flatten party seats sequentially
     seat_party = []
     seat_color = []
     for name, w, col in zip(party_names, party_weights, party_colors):
@@ -88,7 +92,7 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
             seat_color.append(col)
             
     points = []
-    for idx, (r, angle) in enumerate(row_slots):
+    for idx, (r, angle, _) in enumerate(all_slots):
         if idx < len(seat_party):
             x = r * np.cos(angle)
             y = r * np.sin(angle)
@@ -122,7 +126,7 @@ for r in range(1, num_parties + 1):
         if is_viable(comb):
             viable_coalitions.append(comb)
 
-# --- COMPACT SINGLE-SCREEN DASHBOARD ---
+# --- DASHBOARD LAYOUT ---
 col_left, col_right = st.columns([1.3, 1])
 
 with col_left:
@@ -133,16 +137,16 @@ with col_left:
         color_map = dict(zip(names, colors))
         fig = px.scatter(
             df_seats, x="x", y="y", color="Party",
-            color_discrete_map=color_map, height=270
+            color_discrete_map=color_map, height=260
         )
-        fig.update_traces(marker=dict(size=10, line=dict(width=0.3, color='white')))
+        fig.update_traces(marker=dict(size=11, line=dict(width=0.2, color='white')))
         fig.update_layout(
             xaxis=dict(visible=False, showgrid=False, zeroline=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
-            margin=dict(t=5, b=5, l=5, r=5),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5, font=dict(size=9))
+            margin=dict(t=0, b=0, l=0, r=0),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5, font=dict(size=9))
         )
-        fig.add_annotation(x=0, y=0.2, text=str(assigned_seats), showarrow=False, font=dict(size=24, family="Arial, bold", color="white"))
+        fig.add_annotation(x=0, y=0.15, text=str(assigned_seats), showarrow=False, font=dict(size=22, family="Arial, bold", color="white"))
         st.plotly_chart(fig, use_container_width=True)
 
 with col_right:
@@ -162,7 +166,7 @@ with col_right:
     else:
         st.warning("⚠️ **No Veto! (Empty Core)**")
 
-# --- COMPACT COALITION TESTER ---
+# --- COALITION TESTER ---
 st.markdown("---")
 st.subheader("🤝 Test Government Coalition")
 selected_parties = st.multiselect("Cabinet parties:", options=names, default=names[:min(2, num_parties)])
