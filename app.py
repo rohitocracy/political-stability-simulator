@@ -6,38 +6,42 @@ from itertools import combinations
 
 st.set_page_config(page_title="Political Stability Simulator", layout="wide")
 
-# --- APP HEADER ---
-st.title("🏛️ The Political Stability Simulator & Hemicycle")
+# --- CUSTOM CSS FOR COMPACT FIT ---
 st.markdown("""
-*An interactive exploration of the **Political Impossibility Theorem** and the **Stability-Dictatorship Dichotomy**.*  
-Adjust parliament structure, party seats, colors, and ideological tolerance ($\tau$) to simulate chamber dynamics and core stability.
-""")
+    <style>
+        .block-container { padding-top: 1.rem; padding-bottom: 0rem; }
+        h1 { font-size: 1.8rem !important; margin-bottom: 0px !important; }
+        p { margin-bottom: 0.5rem !important; }
+    </style>
+""", unsafe_allow_html=True)
 
-# --- SIDEBAR: CONFIGURATION ---
-st.sidebar.header("Parliament Structure")
-total_seats = st.sidebar.number_input("Total Parliament Seats", min_value=10, max_value=600, value=80, step=1)
+# --- APP HEADER ---
+st.setTitle = st.title("🏛️ The Political Stability Simulator")
+st.markdown("*Exploring the **Political Impossibility Theorem** & **Stability-Dictatorship Dichotomy**.*")
+
+# --- SIDEBAR SETUP ---
+st.sidebar.header("Parliament Config")
+total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=600, value=80, step=1)
 q = (total_seats // 2) + 1
-st.sidebar.metric("Calculated Majority Quota ($q$)", f"{q} (Strict Majority)")
-tau = st.sidebar.slider("Ideological Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
+tau = st.sidebar.slider("Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
 
-st.sidebar.header("Political Parties Setup")
-num_parties = st.sidebar.number_input("Number of Parties", min_value=2, max_value=10, value=3, step=1)
+num_parties = st.sidebar.number_input("Parties", min_value=2, max_value=8, value=3, step=1)
 
-default_names = ["Party A", "Party B", "Party C", "Party D", "Party E", "Party F", "Party G", "Party H", "Party I", "Party J"]
-default_weights = [30, 30, 20, 10, 5, 5, 5, 5, 5, 5]
-default_locs = [0.0, 30.0, 90.0, 45.0, 10.0, 70.0, 20.0, 60.0, 80.0, 100.0]
-default_colors = ["#ff3333", "#ff9933", "#3399ff", "#33cc33", "#9933ff", "#ffff33", "#ff66cc", "#999999", "#666666", "#000000"]
+default_names = ["Party A", "Party B", "Party C", "Party D", "Party E", "Party F"]
+default_weights = [30, 30, 20, 10, 5, 5]
+default_locs = [0.0, 50.0, 100.0, 25.0, 75.0, 50.0]
+default_colors = ["#ff3333", "#3399ff", "#33cc33", "#ff9933", "#9933ff", "#ffff33"]
 
 names, weights, locs, colors = [], [], [], []
 for i in range(num_parties):
-    st.sidebar.markdown(f"**Party {i+1}**")
-    c1, c2 = st.sidebar.columns(2)
+    c1, c2, c3 = st.sidebar.columns([2, 1, 1])
     with c1:
-        name = st.text_input(f"Name {i+1}", value=default_names[i], key=f"name_{i}")
-        w = st.number_input(f"Seats {i+1}", min_value=0, max_value=total_seats, value=default_weights[i] if i < 3 else 5, key=f"w_{i}")
+        name = st.text_input(f"P{i+1} Name", value=default_names[i], key=f"name_{i}")
     with c2:
-        l = st.number_input(f"Loc {i+1}", min_value=-50.0, max_value=150.0, value=default_locs[i], key=f"l_{i}")
-        col = st.color_picker(f"Color {i+1}", value=default_colors[i], key=f"col_{i}")
+        w = st.number_input(f"P{i+1} Seats", min_value=0, max_value=total_seats, value=default_weights[i] if i<3 else 5, key=f"w_{i}")
+    with c3:
+        col = st.color_picker(f"P{i+1} Col", value=default_colors[i], key=f"col_{i}")
+    l = st.sidebar.slider(f"P{i+1} Ideology Loc", min_value=0.0, max_value=100.0, value=default_locs[i], key=f"l_{i}")
     
     names.append(name)
     weights.append(w)
@@ -45,25 +49,24 @@ for i in range(num_parties):
     colors.append(col)
 
 assigned_seats = sum(weights)
-if assigned_seats != total_seats:
-    st.sidebar.warning(f"⚠️ Assigned seats sum to **{assigned_seats}**, but Total Parliament Seats is **{total_seats}**.")
 
-# --- PROPER LEFT-TO-RIGHT HEMICYCLE GENERATOR ---
-def generate_hemicycle_data(party_names, party_weights, party_colors, party_locs):
-    """Sorts parties left-to-right by ideology and arranges seats cleanly along arcs."""
-    # 1. Sort parties by ideological location (Left to Right)
-    sorted_indices = np.argsort(party_locs)
-    sorted_names = [party_names[i] for i in sorted_indices]
-    sorted_weights = [party_weights[i] for i in sorted_indices]
-    sorted_colors = [party_colors[i] for i in sorted_indices]
-    
-    total = sum(sorted_weights)
+# --- TRUE HEMICYCLE GENERATOR (LEFT-TO-RIGHT PARLIAMENT SWEEP) ---
+def generate_hemicycle_data(party_names, party_weights, party_colors):
+    total = sum(party_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
-    # 2. Design concentric rows for the hemicycle
+    # Flatten seats into a single continuous list in the exact order user inputted them
+    seat_party = []
+    seat_color = []
+    for name, w, col in zip(party_names, party_weights, party_colors):
+        for _ in range(w):
+            seat_party.append(name)
+            seat_color.append(col)
+            
+    # Calculate concentric arc rows
     num_rows = max(3, int(np.ceil(np.sqrt(total / 2))))
-    radii = [5.0 + i * 2.0 for i in range(num_rows)]
+    radii = [4.0 + i * 1.8 for i in range(num_rows)]
     arc_lengths = [r * np.pi for r in radii]
     total_arc = sum(arc_lengths)
     
@@ -72,29 +75,21 @@ def generate_hemicycle_data(party_names, party_weights, party_colors, party_locs
     if num_rows > 0:
         seats_per_row[-1] += diff
         
-    # Build continuous list of seats ordered from political Left to Right
-    seat_party = []
-    seat_color = []
-    for name, w, col in zip(sorted_names, sorted_weights, sorted_colors):
-        for _ in range(w):
-            seat_party.append(name)
-            seat_color.append(col)
-            
-    # Place seats along arcs from left angle (pi) to right angle (0)
     points = []
     seat_idx = 0
+    # Fill rows from inner-most arc to outer-most arc
     for r_idx, r in enumerate(radii):
         count = seats_per_row[r_idx]
         if count <= 0:
             continue
-        angles = np.linspace(np.pi, 0, count) # Left to right sweep
+        # Sweep angle from left (pi) to right (0) so leftmost seats sit on the left flank
+        angles = np.linspace(np.pi, 0, count)
         for angle in angles:
             if seat_idx < len(seat_party):
                 x = r * np.cos(angle)
                 y = r * np.sin(angle)
                 points.append({
-                    "x": x,
-                    "y": y,
+                    "x": x, "y": y,
                     "Party": seat_party[seat_idx],
                     "Color": seat_color[seat_idx]
                 })
@@ -115,9 +110,7 @@ def get_weight(coalition_indices):
 def is_viable(coalition_indices):
     if not coalition_indices:
         return False
-    w_sum = get_weight(coalition_indices)
-    cost = get_cost(coalition_indices)
-    return (w_sum >= q) and (cost <= tau)
+    return (get_weight(coalition_indices) >= q) and (get_cost(coalition_indices) <= tau)
 
 indices = list(range(num_parties))
 viable_coalitions = []
@@ -126,60 +119,50 @@ for r in range(1, num_parties + 1):
         if is_viable(comb):
             viable_coalitions.append(comb)
 
-# --- LAYOUT DASHBOARD ---
-col_left, col_right = st.columns([1.5, 1])
+# --- MAIN DASHBOARD (SINGLE SCREEN LAYOUT) ---
+col_left, col_right = st.columns([1.2, 1])
 
 with col_left:
-    st.subheader("🏛️ Parliamentary Hemicycle Chamber (Left to Right)")
-    df_seats = generate_hemicycle_data(names, weights, colors, locs)
+    st.subheader("🏛️ Parliament Chamber")
+    df_seats = generate_hemicycle_data(names, weights, colors)
     
     if not df_seats.empty:
         color_map = dict(zip(names, colors))
         fig = px.scatter(
             df_seats, x="x", y="y", color="Party",
-            color_discrete_map=color_map,
-            hover_name="Party", height=400
+            color_discrete_map=color_map, height=300
         )
-        fig.update_traces(marker=dict(size=13, line=dict(width=0.6, color='white')))
+        fig.update_traces(marker=dict(size=11, line=dict(width=0.4, color='white')))
         fig.update_layout(
             xaxis=dict(visible=False, showgrid=False, zeroline=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
-            margin=dict(t=20, b=20, l=20, r=20),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
+            margin=dict(t=10, b=10, l=10, r=10),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5, font=dict(size=10))
         )
-        fig.add_annotation(x=0, y=0.5, text=str(assigned_seats), showarrow=False, font=dict(size=32, family="Arial, bold", color="white"))
+        fig.add_annotation(x=0, y=0.3, text=str(assigned_seats), showarrow=False, font=dict(size=28, family="Arial, bold", color="white"))
         st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Assign seats to render the hemicycle chamber.")
 
 with col_right:
-    st.subheader("📊 Parliament Stability Status")
-    st.metric("Total Seats Assigned", assigned_seats)
-    st.metric("Viable Government Coalitions", len(viable_coalitions))
+    st.subheader("📊 System Status")
+    c_m1, c_m2 = st.columns(2)
+    c_m1.metric("Quota ($q$)", f"{q}")
+    c_m2.metric("Viable Coalitions", len(viable_coalitions))
     
-    # Check Veto Players
     veto_players = []
     for i in range(num_parties):
-        is_veto = True
-        for c in viable_coalitions:
-            if i not in c:
-                is_veto = False
-                break
+        is_veto = all(i in c for c in viable_coalitions) if viable_coalitions else False
         if viable_coalitions and is_veto:
             veto_players.append(names[i])
             
     if veto_players:
-        st.success(f"🛡️ **Veto Player(s) Detected:** {', '.join(veto_players)}")
-        st.info("Because a veto player exists, the Core is **Non-Empty** (Stable, but power is concentrated).")
+        st.success(f"🛡️ **Veto Player:** {', '.join(veto_players)} (Core Non-Empty)")
     else:
-        st.warning("⚠️ **No Veto Player Detected!**")
-        st.error("The Core is **Empty**! This system suffers from **Political Instability** (Theorem 4.1).")
+        st.warning("⚠️ **No Veto Player!** (Core is **Empty** - Instability)")
 
+# --- COALITION TESTER ---
 st.markdown("---")
-
-# --- COALITION EXPLORER ---
-st.subheader("🤝 Test a Proposed Government Coalition")
-selected_parties = st.multiselect("Select parties to form a cabinet coalition:", options=names, default=names[:min(2, num_parties)])
+st.subheader("🤝 Test Government Coalition")
+selected_parties = st.multiselect("Select cabinet parties:", options=names, default=names[:min(2, num_parties)])
 
 if selected_parties:
     sel_indices = [names.index(p) for p in selected_parties]
@@ -187,16 +170,11 @@ if selected_parties:
     cost = get_cost(sel_indices)
     viable = is_viable(sel_indices)
     
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Coalition Seats", f"{w_sum} / {q} required")
-    c2.metric("Ideological Cost", f"{cost:.1f} (max tol: {tau})")
+    rc1, rc2, rc3 = st.columns(3)
+    rc1.metric("Seats", f"{w_sum} / {q}")
+    rc2.metric("Ideological Cost", f"{cost:.1f} (max {tau})")
     
     if viable:
-        c3.metric("Status", "VIABLE 🟢", delta="Government Formed")
-        st.success(f"The coalition **{', '.join(selected_parties)}** successfully meets both Majority Rule ($W(S) \ge q$) and Ideological Coherence ($Cost(S) \le \tau$)!")
+        rc3.metric("Status", "VIABLE 🟢")
     else:
-        c3.metric("Status", "FAILED 🔴", delta="Blocked", delta_color="inverse")
-        if w_sum < q:
-            st.warning("Reason for failure: **Seat Shortfall** (Does not meet majority quota $q$).")
-        elif cost > tau:
-            st.warning("Reason for failure: **Ideological Incoherence** (Cost exceeds tolerance $\tau$). Parties are too far apart on the political spectrum.")
+        rc3.metric("Status", "BLOCKED 🔴")
