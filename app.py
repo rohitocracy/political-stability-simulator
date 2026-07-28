@@ -97,8 +97,6 @@ for r in range(1, n_parties + 1):
         if is_viable(comb):
             viable_coalitions.append(comb)
 
-# Check Core emptiness using simple game heuristic / core constraints for v(N)=1 or max value
-# If grand coalition is viable, v(N)=1. Otherwise, normalize relative to max viable coalition value.
 has_grand = is_viable(tuple(indices))
 
 # --- VISUALIZATION DASHBOARD ---
@@ -119,7 +117,7 @@ with col_left:
         labels={"Location": "Ideological Axis (Left to Right)", "y": ""}
     )
     fig.update_traces(textposition='top center', marker=dict(opacity=0.8))
-    fig.update_yaxis(showticklabels=False, zeroline=False)
+    fig.update_yaxes(visible=False, showticklabels=False)
     st.plotly_chart(fig, use_container_width=True)
 
 with col_right:
