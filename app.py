@@ -23,7 +23,7 @@ st.markdown("Exploring the **Political Impossibility Theorem** & **Stability-Dic
 
 # --- SIDEBAR CONFIGURATION ---
 st.sidebar.header("Parliament Config")
-total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=500, value=100, step=1)
+total_seats = st.sidebar.number_input("Total Seats", min_value=10, max_value=600, value=100, step=1)
 q = (total_seats // 2) + 1
 tau = st.sidebar.slider("Tolerance ($\tau$)", min_value=1.0, max_value=200.0, value=25.0)
 
@@ -52,35 +52,49 @@ for i in range(num_parties):
 
 assigned_seats = sum(weights)
 
-# --- CLEAN RECTANGULAR GRID LAYOUT ENGINE ---
-def generate_rectangle_data(party_names, party_weights, party_colors, party_locs):
+# --- WESTMINSTER-STYLE TWO-BLOCK RECTANGULAR LAYOUT ENGINE ---
+def generate_westminster_data(party_names, party_weights, party_colors, party_locs):
     total = sum(party_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
-    # Sort parties left-to-right by ideology
+    # 1. Sort parties strictly by ideological location (Left to Right)
     sorted_indices = np.argsort(party_locs)
     s_names = [party_names[i] for i in sorted_indices]
     s_weights = [party_weights[i] for i in sorted_indices]
     s_colors = [party_colors[i] for i in sorted_indices]
     
-    # Build a clean grid (e.g., 10 seats per row)
-    cols_per_row = 10
-    points = []
-    
-    current_seat = 0
+    # Flatten seats into continuous sequence
+    seat_party = []
+    seat_color = []
     for name, w, col in zip(s_names, s_weights, s_colors):
         for _ in range(w):
-            r = current_seat // cols_per_row
-            c = current_seat % cols_per_row
-            points.append({
-                "x": c,
-                "y": -r, # stack downward cleanly in a rectangle
-                "Party": name,
-                "Color": col
-            })
-            current_seat += 1
+            seat_party.append(name)
+            seat_color.append(col)
             
+    # Split seats roughly into two opposing blocks (Government vs Opposition benches)
+    half_idx = len(seat_party) // 2
+    top_block = seat_party[:half_idx]
+    top_colors = seat_color[:half_idx]
+    
+    bot_block = seat_party[half_idx:]
+    bot_colors = seat_color[half_idx:]
+    
+    points = []
+    cols_per_row = 25 # Length of benches
+    
+    # Top Bench (Rows stacked upward)
+    for idx, (p, col) in enumerate(zip(top_block, top_colors)):
+        r = idx // cols_per_row
+        c = idx % cols_per_row
+        points.append({"x": c, "y": 3.0 + r, "Party": p, "Color": col})
+        
+    # Bottom Bench (Rows stacked downward, separated by an aisle)
+    for idx, (p, col) in enumerate(zip(bot_block, bot_colors)):
+        r = idx // cols_per_row
+        c = idx % cols_per_row
+        points.append({"x": c, "y": -1.0 - r, "Party": p, "Color": col})
+        
     return pd.DataFrame(points)
 
 # --- BACKEND GAME LOGIC ($v_\tau$) ---
@@ -106,24 +120,24 @@ for r in range(1, num_parties + 1):
             viable_coalitions.append(comb)
 
 # --- DASHBOARD LAYOUT ---
-col_left, col_right = st.columns([1.3, 1])
+col_left, col_right = st.columns([1.4, 1])
 
 with col_left:
-    st.subheader("🏛️ Parliament Grid (Rectangle)")
-    df_seats = generate_rectangle_data(names, weights, colors, locs)
+    st.subheader("🏛️ Westminster Chamber Benches")
+    df_seats = generate_westminster_data(names, weights, colors, locs)
     
     if not df_seats.empty:
         color_map = dict(zip(names, colors))
         fig = px.scatter(
             df_seats, x="x", y="y", color="Party",
-            color_discrete_map=color_map, height=260
+            color_discrete_map=color_map, height=270
         )
-        fig.update_traces(marker=dict(size=14, line=dict(width=0.2, color='white')))
+        fig.update_traces(marker=dict(size=10, line=dict(width=0.1, color='white')))
         fig.update_layout(
             xaxis=dict(visible=False, showgrid=False, zeroline=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
-            margin=dict(t=10, b=10, l=10, r=10),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5, font=dict(size=9))
+            margin=dict(t=5, b=5, l=5, r=5),
+            legend=dict(orientation="h", yanchor="bottom", y=-0.35, xanchor="center", x=0.5, font=dict(size=9))
         )
         st.plotly_chart(fig, use_container_width=True)
 
