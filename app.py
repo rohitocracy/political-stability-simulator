@@ -3,7 +3,6 @@ import numpy as np
 import plotly.express as px
 import pandas as pd
 from itertools import combinations
-import math
 
 st.set_page_config(page_title="Political Stability Simulator", layout="wide")
 
@@ -24,11 +23,10 @@ tau = st.sidebar.slider("Ideological Tolerance ($\tau$)", min_value=1.0, max_val
 st.sidebar.header("Political Parties Setup")
 num_parties = st.sidebar.number_input("Number of Parties", min_value=2, max_value=10, value=3, step=1)
 
-# Default presets for initial load
 default_names = ["Party A", "Party B", "Party C", "Party D", "Party E", "Party F", "Party G", "Party H", "Party I", "Party J"]
 default_weights = [30, 30, 20, 10, 5, 5, 5, 5, 5, 5]
 default_locs = [0.0, 30.0, 90.0, 45.0, 10.0, 70.0, 20.0, 60.0, 80.0, 100.0]
-default_colors = ["#ff9933", "#3399ff", "#33cc33", "#ff3333", "#9933ff", "#ffff33", "#ff66cc", "#999999", "#666666", "#000000"]
+default_colors = ["#ff3333", "#ff9933", "#3399ff", "#33cc33", "#9933ff", "#ffff33", "#ff66cc", "#999999", "#666666", "#000000"]
 
 names, weights, locs, colors = [], [], [], []
 for i in range(num_parties):
@@ -48,21 +46,24 @@ for i in range(num_parties):
 
 assigned_seats = sum(weights)
 if assigned_seats != total_seats:
-    st.sidebar.warning(f"⚠️ Assigned seats sum to **{assigned_seats}**, but Total Parliament Seats is **{total_seats}**. (Adjust seats to match for accurate hemicycle display).")
+    st.sidebar.warning(f"⚠️ Assigned seats sum to **{assigned_seats}**, but Total Parliament Seats is **{total_seats}**.")
 
-# --- HEMICYCLE COORDINATE GENERATOR ---
-def generate_hemicycle_data(party_names, party_weights, party_colors):
-    """Generates (x, y) coordinates for individual seat dots arranged in a hemicycle matching chamber style."""
-    total = sum(party_weights)
+# --- PROPER LEFT-TO-RIGHT HEMICYCLE GENERATOR ---
+def generate_hemicycle_data(party_names, party_weights, party_colors, party_locs):
+    """Sorts parties left-to-right by ideology and arranges seats cleanly along arcs."""
+    # 1. Sort parties by ideological location (Left to Right)
+    sorted_indices = np.argsort(party_locs)
+    sorted_names = [party_names[i] for i in sorted_indices]
+    sorted_weights = [party_weights[i] for i in sorted_indices]
+    sorted_colors = [party_colors[i] for i in sorted_indices]
+    
+    total = sum(sorted_weights)
     if total <= 0:
         return pd.DataFrame(columns=["x", "y", "Party", "Color"])
     
-    # Configure rows based on total seats
+    # 2. Design concentric rows for the hemicycle
     num_rows = max(3, int(np.ceil(np.sqrt(total / 2))))
-    initial_radius = 5.0
-    radius_increment = 2.0
-    
-    radii = [initial_radius + i * radius_increment for i in range(num_rows)]
+    radii = [5.0 + i * 2.0 for i in range(num_rows)]
     arc_lengths = [r * np.pi for r in radii]
     total_arc = sum(arc_lengths)
     
@@ -71,31 +72,31 @@ def generate_hemicycle_data(party_names, party_weights, party_colors):
     if num_rows > 0:
         seats_per_row[-1] += diff
         
-    # Build seat list ordered by party
-    party_list = []
-    color_list = []
-    for name, w, col in zip(party_names, party_weights, party_colors):
+    # Build continuous list of seats ordered from political Left to Right
+    seat_party = []
+    seat_color = []
+    for name, w, col in zip(sorted_names, sorted_weights, sorted_colors):
         for _ in range(w):
-            party_list.append(name)
-            color_list.append(col)
+            seat_party.append(name)
+            seat_color.append(col)
             
-    # Assign coordinates row by row
+    # Place seats along arcs from left angle (pi) to right angle (0)
     points = []
     seat_idx = 0
     for r_idx, r in enumerate(radii):
         count = seats_per_row[r_idx]
         if count <= 0:
             continue
-        angles = np.linspace(0, np.pi, count)
+        angles = np.linspace(np.pi, 0, count) # Left to right sweep
         for angle in angles:
-            if seat_idx < len(party_list):
+            if seat_idx < len(seat_party):
                 x = r * np.cos(angle)
                 y = r * np.sin(angle)
                 points.append({
                     "x": x,
                     "y": y,
-                    "Party": party_list[seat_idx],
-                    "Color": color_list[seat_idx]
+                    "Party": seat_party[seat_idx],
+                    "Color": seat_color[seat_idx]
                 })
                 seat_idx += 1
                 
@@ -129,26 +130,24 @@ for r in range(1, num_parties + 1):
 col_left, col_right = st.columns([1.5, 1])
 
 with col_left:
-    st.subheader("🏛️ Parliamentary Hemicycle Chamber")
-    df_seats = generate_hemicycle_data(names, weights, colors)
+    st.subheader("🏛️ Parliamentary Hemicycle Chamber (Left to Right)")
+    df_seats = generate_hemicycle_data(names, weights, colors, locs)
     
     if not df_seats.empty:
-        # Create color mapping dictionary for plotly
         color_map = dict(zip(names, colors))
         fig = px.scatter(
             df_seats, x="x", y="y", color="Party",
             color_discrete_map=color_map,
-            hover_name="Party", height=380
+            hover_name="Party", height=400
         )
-        fig.update_traces(marker=dict(size=12, line=dict(width=0.5, color='DarkSlateGrey')))
+        fig.update_traces(marker=dict(size=13, line=dict(width=0.6, color='white')))
         fig.update_layout(
             xaxis=dict(visible=False, showgrid=False, zeroline=False),
             yaxis=dict(visible=False, showgrid=False, zeroline=False),
             margin=dict(t=20, b=20, l=20, r=20),
-            legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+            legend=dict(orientation="h", yanchor="bottom", y=-0.25, xanchor="center", x=0.5)
         )
-        # Add center total seat annotation
-        fig.add_annotation(x=0, y=0, text=str(assigned_seats), showarrow=False, font=dict(size=36, family="Arial, bold"))
+        fig.add_annotation(x=0, y=0.5, text=str(assigned_seats), showarrow=False, font=dict(size=32, family="Arial, bold", color="white"))
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Assign seats to render the hemicycle chamber.")
